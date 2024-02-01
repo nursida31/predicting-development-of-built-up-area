@@ -1,0 +1,51 @@
+//Menampilkan Data Vektor pada Layer Peta
+var geometry = ee.FeatureCollection("projects/nursidaarif/assets/Sleman");
+//Fungsi Masking
+var S2A = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+.filterDate('2019-01-01', '2019-12-31')
+.filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30)) //cloud cover kurang dr 30%
+                .map(maskS2clouds)
+                .median() // diambil nilai tengah atau mediannya
+                .clip(geometry); //
+
+// melakukan cloud masking             
+function maskS2clouds(image) {
+  var qa = image.select('QA60');
+  var cloudBitMask = 1 << 10;
+  var cirrusBitMask = 1 << 11;
+  var mask = qa.bitwiseAnd(cloudBitMask).eq(0)
+      .and(qa.bitwiseAnd(cirrusBitMask).eq(0));
+  return image.updateMask(mask).divide(1);
+}  
+          
+// visualisasi RGB true color
+var RGBTrue = S2A.select(['B4', 'B3', 'B2']);
+var RGBparam = { min: 0, max: 3000,};
+Map.addLayer(RGBTrue, RGBparam, 'Sentinel RGB 432');
+
+// menghitung NDVI
+var nir = S2A.select('B8');
+var red = S2A.select('B4');
+var ndvi = nir.subtract(red).divide(nir.add(red)).rename('NDVI S2A');
+
+var NDVIparam = {min: -1, max: 1, palette:['blue', 'white', 'green']};
+Map.addLayer(ndvi, NDVIparam, 'NDVI Sleman');
+
+// menghitung NDBI
+var swir =S2A.select('B11');                                                            
+var ndbi = swir.subtract(nir).divide(swir.add(nir)).rename('NDBI S2A');
+
+var NDBIparam = {min: -1, max: 1, palette:['green', 'grey', 'white']};        
+Map.addLayer(ndbi, NDBIparam, 'NDBI Sleman');
+//Zoom ke ROI
+Map.centerObject(geometry);
+
+//Eksport Data
+Export.image.toDrive({
+  image: ndvi,
+  description: 'NDVI2018',
+  folder: 'GEE',
+  scale: 10,
+  region: geometry,
+  fileFormat: 'GeoTIFF'
+  });
